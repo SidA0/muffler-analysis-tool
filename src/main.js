@@ -175,7 +175,7 @@ async function drawSpectrum3d() {
     if (generation !== state.spectrumGeneration) return;
     const Plotly = module.default || module;
     plot.textContent = '';
-    await Plotly.newPlot(plot, [{ type: 'surface', x, y, z, surfacecolor: z, connectgaps: false, colorscale: 'Turbo', colorbar: { title: 'Bin dBC', thickness: 14, len: 0.7 }, hovertemplate: '%{x:,.0f} RPM<br>%{y:,.1f} Hz<br>Worst measured: %{z:.1f} dBC<extra></extra>' }], { margin: { l: 0, r: 0, t: 8, b: 0 }, paper_bgcolor: '#fff', scene: { xaxis: { title: 'RPM' }, yaxis: { title: 'Frequency (Hz)' }, zaxis: { title: 'Bin dBC' }, aspectmode: 'cube' }, font: { family: 'DM Sans, sans-serif', color: '#425961' } }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] });
+    await Plotly.newPlot(plot, [{ type: 'surface', x, y, z, surfacecolor: z, connectgaps: false, colorscale: 'Turbo', colorbar: { title: { text: 'Bin dBC' }, thickness: 14, len: 0.7 }, hovertemplate: '%{x:,.0f} RPM<br>%{y:,.1f} Hz<br>Worst measured: %{z:.1f} dBC<extra></extra>' }], { margin: { l: 0, r: 0, t: 8, b: 0 }, paper_bgcolor: '#fff', scene: { xaxis: { title: { text: 'RPM' } }, yaxis: { title: { text: 'Frequency (Hz)' } }, zaxis: { title: { text: 'Bin dBC' } }, aspectmode: 'cube' }, font: { family: 'DM Sans, sans-serif', color: '#425961' } }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] });
   } catch (error) { plot.textContent = `3D graph could not load: ${error.message}`; }
 }
 
