@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#111923" />
   <meta name="description" content="Explore FFT sound pressure by RPM and frequency, find dominant 300 Hz bands, and plan muffler attenuation." />
   <title>Muffler Analysis Tool</title>
-  <script type="module" crossorigin src="./assets/index-Dvjd_DCE.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-C0RwaMM6.css">
+  <script type="module" crossorigin src="./assets/index-C8o0YzYf.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-A1JIOll5.css">
 </head>
 <body>
   <div id="app">
@@ -38,7 +38,7 @@
         <div class="result-tabs" role="tablist" aria-label="Analysis views"><button id="analysis-tab" class="result-tab active" type="button" role="tab" aria-selected="true" aria-controls="analysis-panel">Analysis</button><button id="optimize-tab" class="result-tab" type="button" role="tab" aria-selected="false" aria-controls="optimizer-panel">Optimize frequencies</button></div>
         <div id="analysis-panel" role="tabpanel" aria-labelledby="analysis-tab">
         <div class="section-heading"><span class="step">02</span><div><h2>RPM to dBC</h2><p>Energy sum of measured FFT bins at each RPM.</p></div></div>
-        <div class="chart-card spectrum-card"><div class="card-head"><div><h3>3D worst-case surface</h3><p>Highest measured C weighted level at each RPM and frequency. Drag to rotate; scroll to zoom.</p></div></div><div id="spectrum-3d" class="spectrum-3d" role="img" aria-label="Interactive 3D top surface of highest measured C weighted dBC at each RPM and frequency"></div><p id="spectrum-3d-note" class="spectrum-note"></p></div>
+        <div class="chart-card spectrum-card"><div class="card-head"><div><h3>3D worst-case surface</h3><p>Highest measured C weighted level at each RPM and frequency. Drag to rotate; scroll to zoom.</p></div><label class="surface-filter">Surface smoothing<select id="surface-smoothing"><option value="off">Off · measured</option><option value="light">Light</option><option value="medium">Medium</option><option value="strong">Strong</option></select></label></div><div id="spectrum-3d" class="spectrum-3d" role="img" aria-label="Interactive 3D top surface of highest measured C weighted dBC at each RPM and frequency"></div><p id="spectrum-3d-note" class="spectrum-note"></p></div>
         <div class="metric-row"><div class="metric"><span>RPM points</span><strong id="rpm-points">—</strong></div><div class="metric"><span>Peak level</span><strong id="peak-level">—</strong></div><div class="metric"><span>At speed</span><strong id="peak-rpm">—</strong></div><div class="metric"><span>Frequency bins</span><strong id="freq-bins">—</strong></div></div>
         <div class="chart-card"><div class="card-head"><div><h3>Sound level across RPM</h3><p>Click a point to inspect its leading frequency ranges.</p></div><button id="export" class="secondary">Export results CSV ↓</button></div><div id="chart-legend" class="chart-legend"><span><i class="swatch original"></i> Original dBC</span><span id="after-legend" class="hidden"><i class="swatch after"></i> After attenuation</span></div><div class="chart-wrap"><canvas id="chart" role="img" aria-label="C weighted sound pressure level by RPM"></canvas></div><div class="axis-label">ENGINE SPEED · RPM</div></div>
         <div class="section-heading contributor-title"><span class="step">03</span><div><h2>What drives the level?</h2><p id="contrib-subtitle">Energy contribution at the selected RPM.</p></div></div>

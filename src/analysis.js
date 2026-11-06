@@ -59,6 +59,31 @@ export function worstCaseSurface(records, sourceWeighting = 'z') {
   return { x, y, z, measured: z.reduce((count, row) => count + row.filter(value => value !== null).length, 0) };
 }
 
+// Smooth only the displayed surface. A missing measured coordinate remains a gap.
+export function smoothSurface(z, strength = 'off') {
+  const widths = { light: [0.7, 1.5], medium: [1.3, 3], strong: [2.2, 6] };
+  if (strength === 'off') return z;
+  const [rpmSigma, frequencySigma] = widths[strength] || widths.light;
+  const rpmRadius = Math.ceil(3 * rpmSigma);
+  const frequencyRadius = Math.ceil(3 * frequencySigma);
+  const rpmWeights = Array.from({ length: 2 * rpmRadius + 1 }, (_, i) => Math.exp(-0.5 * ((i - rpmRadius) / rpmSigma) ** 2));
+  const frequencyWeights = Array.from({ length: 2 * frequencyRadius + 1 }, (_, i) => Math.exp(-0.5 * ((i - frequencyRadius) / frequencySigma) ** 2));
+  return z.map((row, fi) => row.map((value, ri) => {
+    if (value === null) return null;
+    let weighted = 0, totalWeight = 0;
+    for (let f = Math.max(0, fi - frequencyRadius); f <= Math.min(z.length - 1, fi + frequencyRadius); f++) {
+      for (let r = Math.max(0, ri - rpmRadius); r <= Math.min(row.length - 1, ri + rpmRadius); r++) {
+        const neighbor = z[f][r];
+        if (neighbor === null) continue;
+        const weight = frequencyWeights[f - fi + frequencyRadius] * rpmWeights[r - ri + rpmRadius];
+        weighted += neighbor * weight;
+        totalWeight += weight;
+      }
+    }
+    return weighted / totalWeight;
+  }));
+}
+
 export function recordsFromGrid(rows, { layout, headerRow, rpmColumn, frequencyColumn, levelColumn, firstColumn }) {
   const header = rows[headerRow] || [];
   const records = [];

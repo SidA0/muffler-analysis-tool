@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { analyze, numeric, recordsFromGrid, worstCaseSurface } from './analysis.js';
+import { analyze, numeric, recordsFromGrid, smoothSurface, worstCaseSurface } from './analysis.js';
 import { applyAttenuation, apdlPressureTable, attenuationAt, parseAttenuationRows, pressureSpectrum } from './attenuation.js';
 import { groupKey } from './optimizer.js';
 import { BAND_WIDTH_HZ, bandContributions, standoutTone } from './bands.js';
@@ -167,15 +167,19 @@ async function drawSpectrum3d() {
   if (!state.surface) return;
   const generation = ++state.spectrumGeneration;
   const plot = $('spectrum-3d');
-  const { x, y, z, measured } = state.surface;
-  $('spectrum-3d-note').textContent = `Top surface from ${measured.toLocaleString()} RPM–frequency coordinates. At each coordinate, height and color show the highest measured C weighted dBC. Empty coordinates remain gaps. The RPM total below uses the energy sum of its bins.`;
+  const { x, y, z: measuredZ, measured } = state.surface;
+  const strength = $('surface-smoothing').value;
+  const z = smoothSurface(measuredZ, strength);
+  const smoothed = strength !== 'off';
+  plot.setAttribute('aria-label', `Interactive 3D ${smoothed ? `${strength} smoothed display of` : 'top surface of'} highest measured C weighted dBC at each RPM and frequency`);
+  $('spectrum-3d-note').textContent = `Top surface from ${measured.toLocaleString()} RPM–frequency coordinates. ${smoothed ? 'Smoothing changes only the displayed height and color; hover shows the measured worst case too. ' : 'Height and color show the highest measured C weighted dBC. '}Empty coordinates remain gaps. The RPM total below uses the energy sum of its bins.`;
   plot.textContent = 'Preparing interactive 3D graph…';
   try {
     const module = await import('plotly.js-gl3d-dist-min');
     if (generation !== state.spectrumGeneration) return;
     const Plotly = module.default || module;
     plot.textContent = '';
-    await Plotly.newPlot(plot, [{ type: 'surface', x, y, z, surfacecolor: z, connectgaps: false, colorscale: 'Turbo', colorbar: { title: { text: 'Bin dBC' }, thickness: 14, len: 0.7 }, hovertemplate: '%{x:,.0f} RPM<br>%{y:,.1f} Hz<br>Worst measured: %{z:.1f} dBC<extra></extra>' }], { margin: { l: 0, r: 0, t: 8, b: 0 }, paper_bgcolor: '#fff', scene: { xaxis: { title: { text: 'RPM' } }, yaxis: { title: { text: 'Frequency (Hz)' } }, zaxis: { title: { text: 'Bin dBC' } }, aspectmode: 'cube' }, font: { family: 'DM Sans, sans-serif', color: '#425961' } }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] });
+    await Plotly.newPlot(plot, [{ type: 'surface', x, y, z, surfacecolor: z, customdata: measuredZ, connectgaps: false, colorscale: 'Turbo', colorbar: { title: { text: 'Displayed dBC' }, thickness: 14, len: 0.7 }, hovertemplate: `%{x:,.0f} RPM<br>%{y:,.1f} Hz<br>${smoothed ? 'Displayed: %{z:.1f} dBC<br>' : ''}Worst measured: %{customdata:.1f} dBC<extra></extra>` }], { margin: { l: 0, r: 0, t: 8, b: 0 }, paper_bgcolor: '#fff', scene: { xaxis: { title: { text: 'RPM' } }, yaxis: { title: { text: 'Frequency (Hz)' } }, zaxis: { title: { text: 'Bin dBC' } }, aspectmode: 'cube' }, font: { family: 'DM Sans, sans-serif', color: '#425961' } }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] });
   } catch (error) { plot.textContent = `3D graph could not load: ${error.message}`; }
 }
 
@@ -390,6 +394,7 @@ $('sheet').addEventListener('change', loadSheet);
 $('layout').addEventListener('change', updateMapping);
 $('header-row').addEventListener('change', updateMapping);
 $('analyze').addEventListener('click', runAnalysis);
+$('surface-smoothing').addEventListener('change', drawSpectrum3d);
 $('rpm-select').addEventListener('change', event => { state.selected = Number(event.target.value); renderContributors(); });
 $('export').addEventListener('click', exportCsv);
 $('curve-file').addEventListener('change', event => importCurveFile(event.target.files[0]));
