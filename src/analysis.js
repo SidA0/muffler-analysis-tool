@@ -40,6 +40,25 @@ export function analyze(records, sourceWeighting = 'z') {
   return { points, accepted };
 }
 
+export function worstCaseSurface(records, sourceWeighting = 'z') {
+  const byFrequency = new Map();
+  const rpms = new Set();
+  for (const record of records) {
+    const rpm = numeric(record.rpm), frequency = numeric(record.frequency), level = numeric(record.level);
+    if (!Number.isFinite(rpm) || rpm < 0 || !Number.isFinite(frequency) || frequency <= 0 || !Number.isFinite(level)) continue;
+    const weighted = level + (sourceWeighting === 'c' ? 0 : cWeighting(frequency));
+    if (!Number.isFinite(weighted)) continue;
+    rpms.add(rpm);
+    if (!byFrequency.has(frequency)) byFrequency.set(frequency, new Map());
+    const row = byFrequency.get(frequency);
+    row.set(rpm, Math.max(row.get(rpm) ?? -Infinity, weighted));
+  }
+  const x = [...rpms].sort((a, b) => a - b);
+  const y = [...byFrequency.keys()].sort((a, b) => a - b);
+  const z = y.map(frequency => x.map(rpm => byFrequency.get(frequency).get(rpm) ?? null));
+  return { x, y, z, measured: z.reduce((count, row) => count + row.filter(value => value !== null).length, 0) };
+}
+
 export function recordsFromGrid(rows, { layout, headerRow, rpmColumn, frequencyColumn, levelColumn, firstColumn }) {
   const header = rows[headerRow] || [];
   const records = [];

@@ -1,12 +1,12 @@
 import * as XLSX from 'xlsx';
-import { analyze, numeric, recordsFromGrid } from './analysis.js';
+import { analyze, numeric, recordsFromGrid, worstCaseSurface } from './analysis.js';
 import { applyAttenuation, apdlPressureTable, attenuationAt, parseAttenuationRows, pressureSpectrum } from './attenuation.js';
 import { groupKey } from './optimizer.js';
 import { BAND_WIDTH_HZ, bandContributions, standoutTone } from './bands.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
-const state = { workbook: null, rows: [], result: null, selected: 0, chartPoints: [], curve: null, attenuated: null, optimizerWorker: null, optimization: null, optBaseCurve: null, optOutside: 'zero', optRpmIndex: 0, spectrumGeneration: 0 };
+const state = { workbook: null, rows: [], result: null, surface: null, selected: 0, chartPoints: [], curve: null, attenuated: null, optimizerWorker: null, optimization: null, optBaseCurve: null, optOutside: 'zero', optRpmIndex: 0, spectrumGeneration: 0 };
 const fmt = (n, digits = 1) => Number(n).toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 const escapeHtml = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -56,7 +56,7 @@ function updateMapping() {
 async function loadFile(file) {
   if (!file) return;
   clearError();
-  clearOptimization(); state.result = null; state.attenuated = null; state.spectrumGeneration++;
+  clearOptimization(); state.result = null; state.surface = null; state.attenuated = null; state.spectrumGeneration++;
   try {
     const buffer = await file.arrayBuffer();
     state.workbook = XLSX.read(buffer, { type: 'array' });
@@ -77,6 +77,7 @@ function runAnalysis() {
   const result = analyze(records, $('weighting').value);
   if (!result.points.length) { showError('No valid measurements were found. Check the layout, header row, columns, and whether RPM/frequency/level cells contain numbers.'); return; }
   state.result = result;
+  state.surface = worstCaseSurface(records, $('weighting').value);
   state.attenuated = state.curve ? applyAttenuation(result.points, state.curve, $('outside').value) : null;
   const peak = result.points.reduce((a, b) => a.level > b.level ? a : b);
   $('rpm-points').textContent = result.points.length.toLocaleString();
@@ -163,20 +164,18 @@ function drawChart() {
 }
 
 async function drawSpectrum3d() {
-  if (!state.result) return;
+  if (!state.surface) return;
   const generation = ++state.spectrumGeneration;
   const plot = $('spectrum-3d');
-  const measurements = state.result.points.flatMap(point => point.contributors.map(bin => ({ rpm: point.rpm, frequency: bin.frequency, level: bin.level })));
-  const stride = Math.max(1, Math.ceil(measurements.length / 15000));
-  const shown = measurements.filter((_, i) => i % stride === 0);
-  $('spectrum-3d-note').textContent = `${shown.length.toLocaleString()} of ${measurements.length.toLocaleString()} measured RPM–frequency bins shown${stride > 1 ? ' for display performance' : ''}. Height and color are C weighted bin dBC; the RPM total is the energy sum of its bins.`;
+  const { x, y, z, measured } = state.surface;
+  $('spectrum-3d-note').textContent = `Top surface from ${measured.toLocaleString()} RPM–frequency coordinates. At each coordinate, height and color show the highest measured C weighted dBC. Empty coordinates remain gaps. The RPM total below uses the energy sum of its bins.`;
   plot.textContent = 'Preparing interactive 3D graph…';
   try {
     const module = await import('plotly.js-gl3d-dist-min');
     if (generation !== state.spectrumGeneration) return;
     const Plotly = module.default || module;
     plot.textContent = '';
-    await Plotly.newPlot(plot, [{ type: 'scatter3d', mode: 'markers', x: shown.map(p => p.rpm), y: shown.map(p => p.frequency), z: shown.map(p => p.level), marker: { size: 2.2, opacity: 0.85, color: shown.map(p => p.level), colorscale: 'Turbo', colorbar: { title: 'Bin dBC', thickness: 14, len: 0.7 }, showscale: true }, hovertemplate: '%{x:,.0f} RPM<br>%{y:,.1f} Hz<br>%{z:.1f} dBC<extra></extra>' }], { margin: { l: 0, r: 0, t: 8, b: 0 }, paper_bgcolor: '#fff', scene: { xaxis: { title: 'RPM' }, yaxis: { title: 'Frequency (Hz)' }, zaxis: { title: 'Bin dBC' }, aspectmode: 'cube' }, font: { family: 'DM Sans, sans-serif', color: '#425961' } }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] });
+    await Plotly.newPlot(plot, [{ type: 'surface', x, y, z, surfacecolor: z, connectgaps: false, colorscale: 'Turbo', colorbar: { title: 'Bin dBC', thickness: 14, len: 0.7 }, hovertemplate: '%{x:,.0f} RPM<br>%{y:,.1f} Hz<br>Worst measured: %{z:.1f} dBC<extra></extra>' }], { margin: { l: 0, r: 0, t: 8, b: 0 }, paper_bgcolor: '#fff', scene: { xaxis: { title: 'RPM' }, yaxis: { title: 'Frequency (Hz)' }, zaxis: { title: 'Bin dBC' }, aspectmode: 'cube' }, font: { family: 'DM Sans, sans-serif', color: '#425961' } }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] });
   } catch (error) { plot.textContent = `3D graph could not load: ${error.message}`; }
 }
 
