@@ -2,10 +2,11 @@ import * as XLSX from 'xlsx';
 import { analyze, numeric, recordsFromGrid } from './analysis.js';
 import { applyAttenuation, apdlPressureTable, attenuationAt, parseAttenuationRows, pressureSpectrum } from './attenuation.js';
 import { groupKey } from './optimizer.js';
+import { BAND_WIDTH_HZ, bandContributions, standoutTone } from './bands.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
-const state = { workbook: null, rows: [], result: null, selected: 0, chartPoints: [], curve: null, attenuated: null, optimizerWorker: null, optimization: null, optBaseCurve: null, optOutside: 'zero', optRpmIndex: 0 };
+const state = { workbook: null, rows: [], result: null, selected: 0, chartPoints: [], curve: null, attenuated: null, optimizerWorker: null, optimization: null, optBaseCurve: null, optOutside: 'zero', optRpmIndex: 0, spectrumGeneration: 0 };
 const fmt = (n, digits = 1) => Number(n).toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 const escapeHtml = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -55,7 +56,7 @@ function updateMapping() {
 async function loadFile(file) {
   if (!file) return;
   clearError();
-  clearOptimization(); state.result = null; state.attenuated = null;
+  clearOptimization(); state.result = null; state.attenuated = null; state.spectrumGeneration++;
   try {
     const buffer = await file.arrayBuffer();
     state.workbook = XLSX.read(buffer, { type: 'array' });
@@ -92,7 +93,7 @@ function runAnalysis() {
   $('opt-target').value = Math.max(0, Math.floor(peak.level - 10));
   clearOptimization(); updateOptimizerNotes(); showResultTab('analysis');
   $('results').classList.remove('hidden');
-  renderContributors(); renderAttenuation(); drawChart();
+  renderContributors(); renderAttenuation(); drawChart(); drawSpectrum3d();
   $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -103,10 +104,13 @@ function renderContributors() {
   $('ansys-rpm').value = state.selected;
   $('opt-rpm').value = state.selected;
   $('contrib-subtitle').textContent = `Energy contribution at ${fmt(point.rpm, 0)} RPM.`;
-  const top = point.contributors.slice(0, 8);
-  $('contributors').innerHTML = top.map((item, i) => `<div class="contributor"><span class="rank">${String(i + 1).padStart(2, '0')}</span><strong>${fmt(item.frequency, item.frequency < 100 ? 1 : 0)} <small>Hz</small></strong><div class="bar-track"><div class="bar" style="width:${Math.max(0.6, item.share * 100)}%"></div></div><span class="share">${fmt(item.share * 100)}%</span></div>`).join('');
+  const top = bandContributions(point.contributors).slice(0, 8);
+  $('contributors').innerHTML = top.map((item, i) => `<div class="contributor"><span class="rank">${String(i + 1).padStart(2, '0')}</span><strong>${item.label}</strong><div class="bar-track"><div class="bar" style="width:${Math.max(0.6, item.share * 100)}%"></div></div><span class="share">${fmt(item.share * 100)}%</span></div>`).join('');
   const topShare = top[0]?.share || 0;
-  $('insight-text').textContent = top.length ? `${fmt(top[0].frequency, top[0].frequency < 100 ? 1 : 0)} Hz is the largest measured contributor here, accounting for ${fmt(topShare * 100)}% of the total sound energy.` : '';
+  $('insight-text').textContent = top.length ? `${top[0].label} is the largest measured bracket here, accounting for ${fmt(topShare * 100)}% of the total sound energy.` : '';
+  const tone = standoutTone(point.contributors);
+  $('tone-alert').classList.toggle('hidden', !tone);
+  $('tone-alert').textContent = tone ? `Standout tone: ${fmt(tone.frequency, tone.frequency < 100 ? 1 : 0)} Hz contributes ${fmt(tone.share * 100)}% of total energy and is ${fmt(tone.contrastDb)} dB above the next measured bin in ${tone.band}. This is a screening flag, not proof of the source.` : '';
   renderAttenuation();
   drawChart();
 }
@@ -158,10 +162,31 @@ function drawChart() {
   ctx.save(); ctx.translate(15, h / 2); ctx.rotate(-Math.PI / 2); ctx.fillStyle = '#75838d'; ctx.textAlign = 'center'; ctx.font = '700 10px Inter, system-ui, sans-serif'; ctx.fillText('dBC', 0, 0); ctx.restore();
 }
 
+async function drawSpectrum3d() {
+  if (!state.result) return;
+  const generation = ++state.spectrumGeneration;
+  const plot = $('spectrum-3d');
+  const measurements = state.result.points.flatMap(point => point.contributors.map(bin => ({ rpm: point.rpm, frequency: bin.frequency, level: bin.level })));
+  const stride = Math.max(1, Math.ceil(measurements.length / 15000));
+  const shown = measurements.filter((_, i) => i % stride === 0);
+  $('spectrum-3d-note').textContent = `${shown.length.toLocaleString()} of ${measurements.length.toLocaleString()} measured RPM–frequency bins shown${stride > 1 ? ' for display performance' : ''}. Height and color are C weighted bin dBC; the RPM total is the energy sum of its bins.`;
+  plot.textContent = 'Preparing interactive 3D graph…';
+  try {
+    const module = await import('plotly.js-gl3d-dist-min');
+    if (generation !== state.spectrumGeneration) return;
+    const Plotly = module.default || module;
+    plot.textContent = '';
+    await Plotly.newPlot(plot, [{ type: 'scatter3d', mode: 'markers', x: shown.map(p => p.rpm), y: shown.map(p => p.frequency), z: shown.map(p => p.level), marker: { size: 2.2, opacity: 0.85, color: shown.map(p => p.level), colorscale: 'Turbo', colorbar: { title: 'Bin dBC', thickness: 14, len: 0.7 }, showscale: true }, hovertemplate: '%{x:,.0f} RPM<br>%{y:,.1f} Hz<br>%{z:.1f} dBC<extra></extra>' }], { margin: { l: 0, r: 0, t: 8, b: 0 }, paper_bgcolor: '#fff', scene: { xaxis: { title: 'RPM' }, yaxis: { title: 'Frequency (Hz)' }, zaxis: { title: 'Bin dBC' }, aspectmode: 'cube' }, font: { family: 'DM Sans, sans-serif', color: '#425961' } }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] });
+  } catch (error) { plot.textContent = `3D graph could not load: ${error.message}`; }
+}
+
 function exportCsv() {
   if (!state.result) return;
-  const lines = ['RPM,Total dBC,Frequency Hz,Bin dBC,Energy contribution percent'];
-  for (const point of state.result.points) for (const bin of point.contributors) lines.push([point.rpm, point.level.toFixed(4), bin.frequency, bin.level.toFixed(4), (bin.share * 100).toFixed(4)].join(','));
+  const lines = ['RPM,Total dBC,Range start Hz,Range end Hz,Range dBC,Energy contribution percent,Standout tone Hz,Standout tone energy percent'];
+  for (const point of state.result.points) {
+    const tone = standoutTone(point.contributors);
+    for (const band of bandContributions(point.contributors)) lines.push([point.rpm, point.level.toFixed(4), band.key * BAND_WIDTH_HZ, (band.key + 1) * BAND_WIDTH_HZ, band.level.toFixed(4), (band.share * 100).toFixed(4), tone?.band === band.label ? tone.frequency : '', tone?.band === band.label ? (tone.share * 100).toFixed(4) : ''].join(','));
+  }
   download('rpm_sound_analysis.csv', lines.join('\r\n'), 'text/csv;charset=utf-8');
 }
 
@@ -325,16 +350,20 @@ function renderOptimizerOutput() {
   $('opt-achieved').textContent = `${fmt(result.achievedDb)} dBC`;
   $('opt-band-count').textContent = result.groups.length.toLocaleString();
   $('opt-result-note').textContent = `At ${fmt(rpm, 0)} RPM, ${fmt(result.baselineDb - result.achievedDb)} dB of additional reduction is predicted.${result.iterations ? '' : ' The target is already met.'}`;
+  const sourceBins = state.result.points[state.optRpmIndex].contributors.map(bin => ({ frequency: bin.frequency, energy: bin.energy * 10 ** (-(state.optBaseCurve ? attenuationAt(bin.frequency, state.optBaseCurve, state.optOutside) : 0) / 10) }));
+  const tone = standoutTone(sourceBins);
+  $('opt-tone-alert').classList.toggle('hidden', !tone);
+  $('opt-tone-alert').textContent = tone ? `Standout tone at ${fmt(tone.frequency, tone.frequency < 100 ? 1 : 0)} Hz (${fmt(tone.share * 100)}% of starting energy, ${fmt(tone.contrastDb)} dB above the next bin in its bracket). The recommended cut applies to its whole 300 Hz bracket.` : '';
   const ranked = [...result.groups].filter(group => group.cutDb >= 0.05).sort((a, b) => b.removedShare - a.removedShare);
   $('opt-table-note').textContent = ranked.length ? `Showing the ${Math.min(25, ranked.length)} groups removing the most starting sound energy. Export for every group.` : 'No additional frequency cuts are needed.';
-  $('opt-table').innerHTML = `<table><thead><tr><th>Center</th><th>Measured span</th><th>Extra cut</th><th>Energy removed</th></tr></thead><tbody>${ranked.slice(0, 25).map(group => `<tr><td>${fmt(group.centerHz, group.centerHz < 100 ? 1 : 0)} Hz</td><td>${fmt(group.minHz, 0)}–${fmt(group.maxHz, 0)} Hz</td><td>${fmt(group.cutDb)} dB</td><td>${fmt(group.removedShare * 100)}%</td></tr>`).join('')}</tbody></table>`;
+  $('opt-table').innerHTML = `<table><thead><tr><th>Frequency bracket</th><th>Measured bins</th><th>Extra cut</th><th>Energy removed</th></tr></thead><tbody>${ranked.slice(0, 25).map(group => `<tr><td>${group.label}</td><td>${group.count}</td><td>${fmt(group.cutDb)} dB</td><td>${fmt(group.removedShare * 100)}%</td></tr>`).join('')}</tbody></table>`;
 }
 
 function exportOptimization() {
   if (!state.optimization) return;
-  const lines = ['RPM,Center frequency Hz,Lowest measured Hz,Highest measured Hz,Additional attenuation dB,Starting energy removed percent'];
+  const lines = ['RPM,Bracket start Hz,Bracket end Hz,Measured bin count,Additional attenuation dB,Starting energy removed percent'];
   const rpm = state.result.points[state.optRpmIndex].rpm;
-  state.optimization.groups.forEach(group => lines.push([rpm, group.centerHz.toFixed(3), group.minHz, group.maxHz, group.cutDb.toFixed(4), (group.removedShare * 100).toFixed(4)].join(',')));
+  state.optimization.groups.forEach(group => lines.push([rpm, group.key * BAND_WIDTH_HZ, (group.key + 1) * BAND_WIDTH_HZ, group.count, group.cutDb.toFixed(4), (group.removedShare * 100).toFixed(4)].join(',')));
   download(`optimized_frequency_cuts_${rpm}rpm.csv`, lines.join('\r\n'), 'text/csv;charset=utf-8');
 }
 

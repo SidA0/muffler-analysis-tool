@@ -9,6 +9,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "plotly.js-gl3d-dist-min": "^3.3.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

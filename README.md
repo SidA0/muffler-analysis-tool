@@ -1,6 +1,6 @@
 # Muffler Analysis Tool
 
-A browser-based tool for turning FFT sound pressure spectra into an RPM versus dBC curve and a per-RPM frequency contribution ranking. Measurements stay in the browser; the app has no upload server.
+A browser-based tool for turning FFT sound pressure spectra into an RPM versus dBC curve, a 3D RPM–frequency–level plot, and a per-RPM contribution ranking in 300 Hz ranges. Measurements stay in the browser; the app has no upload server.
 
 Live page: https://sida0.github.io/muffler-analysis-tool/
 
@@ -18,7 +18,7 @@ Upload `.xlsx`, `.xls`, `.csv`, or `.tsv`. Select the worksheet, layout, header 
 - Frequency rows with RPM column headings.
 - RPM rows with frequency column headings.
 
-Choose whether source levels are unweighted dB SPL (the app applies C weighting) or already C weighted dBC. Click **Analyze data**. Click a chart point or choose an RPM to inspect its leading frequency bins. **Export results CSV** includes each RPM's total and every frequency bin's weighted level and energy share.
+Choose whether source levels are unweighted dB SPL (the app applies C weighting) or already C weighted dBC. Click **Analyze data**. The 3D chart shows RPM and frequency on its horizontal axes; height and color show the C weighted level of each measured frequency bin. Click a chart point or choose an RPM to inspect its leading 300 Hz ranges. A single tone is flagged if it has at least 8% of total energy and is at least 6 dB above the next strongest measured bin in a range containing at least three bins. **Export results CSV** includes each RPM's total, bracket level and energy share, and any flagged tone.
 
 ## Attenuation curve
 
@@ -28,7 +28,7 @@ Paste two columns (frequency in Hz and attenuation in dB) or import an Excel/CSV
 
 After analyzing a workbook, open **Optimize frequencies**. Select an RPM, a target dBC, a 5–20% safety margin, and a run length. The margin is a percentage of linear sound pressure: the design target is `target dBC + 20 log10(1 − margin/100)`. The **Start from the attenuation curve already applied** option searches for additional reductions on top of the current curve.
 
-Short runs use octave bands, balanced runs use third-octave bands, and long runs use individual FFT bins. The progress bar reports the iterative solve, and **Stop** cancels it. The solver minimizes squared attenuation with a penalty for abrupt changes between neighboring frequency groups, subject to the design target and a 60 dB cut limit per group. It returns a frequency cut table and CSV. **Apply to RPM graph** combines the recommendation with the selected baseline and recalculates all RPMs. This is a mathematical target plan; actual achievable attenuation depends on the physical system.
+All run lengths recommend cuts in the same 300 Hz brackets. Short, balanced, and long runs use increasing refinement time. The progress bar reports the iterative solve, and **Stop** cancels it. The solver minimizes squared attenuation with a penalty for abrupt changes between neighboring brackets, subject to the design target and a 60 dB cut limit per bracket. It returns a frequency cut table and CSV, and flags any standout single tone in the starting spectrum. **Apply to RPM graph** combines the recommendation with the selected baseline and recalculates all RPMs. This is a mathematical target plan; actual achievable attenuation depends on the physical system.
 
 ## Ansys Harmonic Acoustics
 

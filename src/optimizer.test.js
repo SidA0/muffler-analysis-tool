@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { groupSpectrum, optimizeSpectrum } from './optimizer.js';
 
-test('frequency grouping gets more detailed with longer runs', () => {
-  const bins = [100, 125, 160, 200, 250, 315, 400].map(frequency => ({ frequency, energy: 1 }));
-  assert.ok(groupSpectrum(bins, 'short').length < groupSpectrum(bins, 'balanced').length);
-  assert.equal(groupSpectrum(bins, 'long').length, bins.length);
+test('all run lengths use the same 300 Hz brackets', () => {
+  const bins = [100, 125, 299, 300, 315, 599, 600].map(frequency => ({ frequency, energy: 1 }));
+  for (const mode of ['short', 'balanced', 'long']) {
+    const groups = groupSpectrum(bins, mode);
+    assert.deepEqual(groups.map(group => group.label), ['0–300 Hz', '300–600 Hz', '600–900 Hz']);
+    assert.deepEqual(groups.map(group => group.count), [3, 3, 1]);
+  }
 });
 
 test('solver reaches a target and favors the louder frequency group', async () => {

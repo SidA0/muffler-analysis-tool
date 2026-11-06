@@ -1,16 +1,16 @@
 const K = Math.LN10 / 10;
 const MAX_CUT = 60;
+import { BAND_WIDTH_HZ, bandKey, bandLabel } from './bands.js';
 
 export const RUN_MODES = {
-  short: { resolution: 1, sweeps: 8, iterations: 12, maxMs: 2000 },
-  balanced: { resolution: 3, sweeps: 16, iterations: 24, maxMs: 8000 },
-  long: { resolution: 0, sweeps: 26, iterations: 36, maxMs: 20000 }
+  short: { sweeps: 8, iterations: 12, maxMs: 2000 },
+  balanced: { sweeps: 16, iterations: 24, maxMs: 8000 },
+  long: { sweeps: 26, iterations: 36, maxMs: 20000 }
 };
 
 export function groupKey(frequency, mode) {
-  const resolution = RUN_MODES[mode]?.resolution;
-  if (resolution === 0) return frequency;
-  return Math.round(resolution * Math.log2(frequency / 20));
+  if (!RUN_MODES[mode]) throw new Error('Choose a valid run length.');
+  return bandKey(frequency);
 }
 
 export function groupSpectrum(bins, mode = 'balanced') {
@@ -26,7 +26,7 @@ export function groupSpectrum(bins, mode = 'balanced') {
     existing.count++;
     groups.set(key, existing);
   }
-  return [...groups.values()].sort((a, b) => a.minHz - b.minHz).map(group => ({ ...group, centerHz: mode === 'long' ? group.minHz : 20 * 2 ** (group.key / RUN_MODES[mode].resolution) }));
+  return [...groups.values()].sort((a, b) => a.key - b.key).map(group => ({ ...group, centerHz: group.key * BAND_WIDTH_HZ + BAND_WIDTH_HZ / 2, label: bandLabel(group.key) }));
 }
 
 function ratioAt(groups, cuts, total) {
@@ -62,7 +62,7 @@ export async function optimizeSpectrum({ bins, targetDb, marginPercent, mode = '
   if (!Number.isFinite(targetDb)) throw new Error('Enter a valid target dBC.');
   if (!(marginPercent >= 5 && marginPercent <= 20)) throw new Error('The pressure margin must be between 5% and 20%.');
   const groups = groupSpectrum(bins, mode);
-  if (groups.length < 2) throw new Error('At least two frequency groups are required.');
+  if (!groups.length) throw new Error('At least one measured frequency is required.');
   const total = groups.reduce((sum, group) => sum + group.energy, 0);
   const baselineDb = 10 * Math.log10(total);
   const designTargetDb = targetDb + 20 * Math.log10(1 - marginPercent / 100);
